@@ -1,8 +1,10 @@
 #!/bin/bash -e
 #grab_a_gag.sh <file/directory name> [target directory ./ default]
 
-#Default server and credentials
-SMBCLIENT="smbclient //Gagri/GRIW -A ~/.smbclient"
+#Default server and credentials, unless already set
+if [[ -z "$SMBCLIENT" ]]; then
+	SMBCLIENT="smbclient //Gagri/GRIW -A ~/.smbclient"
+fi
 
 case "$#" in
 1)  DESTDIR="./";;
@@ -26,6 +28,6 @@ fn="${TARGET##*/}" # filename
 dn="${TARGET%/*}"  # dirname
 
 CMD="${SMBCLIENT} -c \"prompt; recurse; cd ${dn}; mget ${fn}\""
+echo $CMD
 eval $CMD
 cd "$CURDIR"
-

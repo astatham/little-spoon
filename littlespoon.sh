@@ -88,40 +88,85 @@ COMMAND="${COMMAND_ARGS[*]}"
 # Check the command -- it must be a valid qsub submission command
 ValidateCommand
 
+# Figure out the command type
+if [ ${COMMAND_ARGS[0]} == "qsub" ]; then
+	echo "Type qsub"
+	COMMAND_TYPE="qsub"
+else
+	echo "Type script"
+	COMMAND_TYPE="script"
+fi
+
 # Check the scratch space
 ValidateScratchSpace
 
 # Get a directory listing on the target directory on gagri
 CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
 
 # Submit the tasks.  Tasks are structured as follows:
 #   1) Fetch job, CIFS --> scratch space.  This may be held on the put job of a previous task.
 #   2) Execute job.  In this case, aarsta just wants command to be executed, assuming it's a qsub command.  This is held on the fetch job.
 #   3) Put job, scratch --> CIFS.  This is held on the execute job.
+#   4) Clean up by rm -r scratch/*
+
+# Export variables for use by grab_a_gag.sh and put_a_gag.sh
+export SMBCLIENT="$SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME"
+echo "SMBCLIENT=$SMBCLIENT"
+
 TASK_INDEX=0
 for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 
+	echo "TASK_INDEX=$TASK_INDEX"
+	echo "TASK_DIRECTORY=$TASK_DIRECTORY"
+	
 	# 1) Fetch job
 	# Prepare the scratch space
+	echo "  Preparing scratch"
 	THIS_SCRATCH_PATH=$SCRATCH_PATH/$TASK_DIRECTORY
 	mkdir -p $THIS_SCRATCH_PATH
-	rm $THIS_SCRATCH_PATH/*
+	rm $THIS_SCRATCH_PATH/* > /dev/null 2>&1
 	
-	# Submit the jobs, using Aaron's script
+	# Submit the fetch jobs, using Aaron's script
+	echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
 	if [ $TASK_INDEX -lt $NUM_CONCURRENT_TASKS ]; then
-		qsub -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -b y -shell n grab_a_gag.sh "$SHARE_NAME/$SRC_CIFS_DIR/$TASK_DIRECTORY/*" $THIS_SCRATCH_PATH
+		echo "    Immediate"
+		qsub -wd $EXEC_DIR -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" $THIS_SCRATCH_PATH
 	else
-		qsub -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -b y -shell n -hold_jid $JOB_NAME"_P_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) grab_a_gag.sh "$SHARE_NAME/$SRC_CIFS_DIR/$TASK_DIRECTORY/*" $THIS_SCRATCH_PATH
+		echo "    Waiting on $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS))"
+		qsub -wd $EXEC_DIR -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" $THIS_SCRATCH_PATH
 	fi
 	
-	# 2) Execute command.  The command at this point is expected to be a qsub command.
-	# We need to modify it to add a hold_jid option.
-	COMMAND_MOD=${COMMAND/qsub /qsub -hold_jid $JOB_NAME"_F_"$TASK_INDEX -N $JOB_NAME"_E_"$TASK_INDEX }
-	eval $COMMAND_MOD
+	# 2) Execute command.  The command can either be a straight qsub, in which case
+	# it is modified in-situ to add the required holds and names, or a script.  If
+	# a script, it is expected that this contains one or more qsubs.  The qsub jobs 
+	# are submitted with names and hold_jids so that the first job to be executed
+	# holds waiting for $WAIT_JOB_ID to be completed, and that the last job(s) to be
+	# executed have a name of $EXEC_JOB_ID.
+	echo "  Submitting compute job $JOB_NAME"_E_"$TASK_INDEX, waiting on $JOB_NAME"_F_"$TASK_INDEX"
+	
+	cd $THIS_SCRATCH_PATH
+	if [ $COMMAND_TYPE == "qsub" ]; then
+		COMMAND_MOD=${COMMAND/qsub /qsub -hold_jid $JOB_NAME"_F_"$TASK_INDEX -N $JOB_NAME"_E_"$TASK_INDEX -cwd }
+		eval $COMMAND_MOD
+	elif [ $COMMAND_TYPE == "script" ]; then
+		export WAIT_JOB_ID="$JOB_NAME"_F_"$TASK_INDEX"
+		export EXEC_JOB_ID="$JOB_NAME"_E_"$TASK_INDEX"
+		eval $EXEC_DIR/$COMMAND
+	else
+		echo "Invalid command type $COMMAND_TYPE.  This is a bug, please report it." >&2
+		exit 1
+	fi
+	cd $EXEC_DIR
 	
 	# 3) Put job.  It is expected that the output of the job is at 
 	# $SCRATCH_PATH/$TASK_DIRECTORY/$RESULTS_SUBDIR
-	qsub -pr orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX put_a_gag.sh "$THIS_SCRATCH_PATH/$RESULTS_SUBDIR/*" $SHARE_NAME/$DEST_CIFS_DIR/$TASK_DIRECTORY
+	echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX"
+	qsub -wd $EXEC_DIR -pe orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX put_a_gag.sh "$THIS_SCRATCH_PATH/$RESULTS_SUBDIR/*" "$DEST_CIFS_DIR/$TASK_DIRECTORY"
+	
+	# 4) Clean up
+	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX"
+	qsub -wd $EXEC_DIR -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH/*"
 	
 	(( TASK_INDEX++ ))
 done
