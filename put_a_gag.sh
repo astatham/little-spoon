@@ -1,5 +1,5 @@
 #!/bin/bash -e
-#grab_a_gag.sh <file/directory name> [target directory ./ default]
+#put_a_gag.sh <file/directory name> [target directory ./ default]
 
 #Default server and credentials, unless already set
 if [[ -z "$SMBCLIENT" ]]; then
