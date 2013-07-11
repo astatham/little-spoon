@@ -1,24 +1,27 @@
 #!/bin/bash -e
-#put_a_gag.sh <file/directory name> [target directory ./ default]
+#put_a_gag.sh <file/directory name> [target directory]
 
 #Default server and credentials, unless already set
 if [[ -z "$SMBCLIENT" ]]; then
 	SMBCLIENT="smbclient //Gagri/GRIW -A ~/.smbclient"
 fi
 
-if [ $# -ne 2 ]
+if [ $# -ne 3 ]
 then
-  echo "Usage: $(basename $0) {Local file/directory} {Remote target directory}"
+  echo "Usage: $(basename $0) {Local directory} {Remote target directory} {New directory name}"
   exit 1
 fi
 
-#Check if $1 exists
-if [ ! -e "$1" ]
-then
-    echo "$1 does not exist"
-    exit 1
-fi
-
-CMD="${SMBCLIENT} -c \"prompt; recurse; cd ${2}; mput ${1}\""
+##Check if $1 exists
+#if [ ! -e "$1" ]
+#then
+#    echo "$1 does not exist"
+#    exit 1
+#fi
+CURDIR=$(pwd)
+cd $1
+CMD="${SMBCLIENT} -c \"cd ${2}; mkdir ${3}; cd ${3}; prompt; recurse; mput *\""
+echo $CMD
 eval $CMD
+cd $CURDIR
 
