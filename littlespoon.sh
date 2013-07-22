@@ -24,7 +24,7 @@ VERSION=0.2
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
-JOB_NAME='littlespoon'
+JOB_NAME="littlespoon_$$"
 SHARE_NAME="//gagri.garvan.unsw.edu.au/GRIW"
 SCRATCH_PATH="/share/Temp/$USER/littlespoon_$$"
 CREDS_FILE="~/.gagri.creds"
@@ -49,7 +49,7 @@ ValidateScratchSpace()
 
 
 # Parse the named arguments
-while getopts ":s:N:t:A:R:" OPTION; do
+while getopts ":s:N:t:A:R:f:F:" OPTION; do
 	case $OPTION in
 		s)	SHARE_NAME=$OPTARG 
 			;;
@@ -59,7 +59,15 @@ while getopts ":s:N:t:A:R:" OPTION; do
 			;;
 		A)	CREDS_FILE=$OPTARG
 			;;
-		R)  RESULTS_SUBDIR=$OPTARG
+		R)	RESULTS_SUBDIR=$OPTARG
+			;;
+		f)	CIFS_FILE_LIST=$OPTARG
+			if [ ! -e "$CIFS_FILE_LIST" ]; then
+				echo "$CIFS_FILE_LIST does not exist!"
+				exit 1
+			fi
+			;;
+		F)	FILTER_REGEX=$OPTARG
 			;;
 		\?)	echo "Unknown option: -$OPTARG" >&2 
 			;;
@@ -100,8 +108,29 @@ fi
 # Check the scratch space
 ValidateScratchSpace
 
-# Get a directory listing on the target directory on gagri
-CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+# Work out list of directories we are copying from gagri
+if [[ -z "$CIFS_FILE_LIST" ]]; then
+	# Get a directory listing on the target directory on gagri
+	CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+else
+	# Get the listing from the supplied file
+	CIFS_DIR_LISTING=( $(sed -r 's/^\s*//; s/\s*$//; /^$/d' "$CIFS_FILE_LIST") )
+fi
+
+# Filter by supplied regex
+if [[ ! -z "$FILTER_REGEX" ]];
+then
+	tmp=( "${CIFS_DIR_LISTING[@]}" )
+	CIFS_DIR_LISTING=( $(for i in ${tmp[@]}; do echo "$i"; done | grep -E "$FILTER_REGEX") )
+fi
+
+# Check we have >=1 directories to littlespoon
+if [ ${#CIFS_DIR_LISTING[@]} -eq 0 ]; then
+	echo "ERROR: No directories in final list"
+	exit 1
+fi
+
+# We now have our final list of directories
 echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
 
 # Submit the tasks.  Tasks are structured as follows:
@@ -131,7 +160,7 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	mkdir -p $THIS_SCRATCH_PATH/input $THIS_SCRATCH_PATH/output
 	# Submit the fetch jobs, using Aaron's script
 	echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
-	if [ $(($TASK_INDEX+1)) -lt $NUM_CONCURRENT_TASKS ]; then
+	if [ $TASK_INDEX -lt $NUM_CONCURRENT_TASKS ]; then
 		echo "    Immediate"
 		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
 	else
