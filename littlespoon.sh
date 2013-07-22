@@ -20,6 +20,7 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
+VERSION=0.2
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
@@ -73,6 +74,9 @@ if [ $# -lt $OPTIND_INC ] || [ $# -lt 4 ]; then
 	echo "Usage: bigspoon.sh [-s <CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <creds file>] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
 	exit 1
 fi
+
+#Start execution
+echo "Starting littlespoon version ""$VERSION"
 
 OPT_ARRAY=("$@")
 SRC_CIFS_DIR=${OPT_ARRAY[@]:$OPTIND-1:1}
@@ -163,7 +167,7 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	
 	# 4) Clean up
 	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX"
-	qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH"
+	qsub -q all.q -wd $SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH"
 	
 	(( TASK_INDEX++ ))
 done
