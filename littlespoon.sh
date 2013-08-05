@@ -32,14 +32,6 @@ CREDS_FILE="~/.gagri.creds"
 # The smbclient command
 SMBCLIENT_COMMAND="smbclient"
 
-ValidateCommand()
-{
-	echo "ValidateCommand: TODO"
-	# TODO: Make sure that $COMMAND is a valid qsub -q all.q submission
-	# Additionally, it:
-	#   * Should NOT have a name (-N option)
-	#   * Should NOT have any holds (-hold* option)
-}
 
 ValidateScratchSpace()
 {
@@ -79,7 +71,7 @@ done
 # Parse positional arguments
 OPTIND_INC=$((3 + OPTIND))
 if [ $# -lt $OPTIND_INC ] || [ $# -lt 4 ]; then
-	echo "Usage: bigspoon.sh [-s <CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <creds file>] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
+	echo "Usage: bigspoon.sh [-s <CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <creds file>] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <absolute path to script>"
 	exit 1
 fi
 
@@ -92,18 +84,6 @@ DEST_CIFS_DIR=${OPT_ARRAY[@]:$OPTIND:1}
 NUM_CONCURRENT_TASKS=${OPT_ARRAY[@]:$OPTIND+1:1}
 COMMAND_ARGS=${OPT_ARRAY[@]:$OPTIND+2:${#OPT_ARRAY[@]}-$OPTIND+1}
 COMMAND="${COMMAND_ARGS[*]}"
-
-# Check the command -- it must be a valid qsub -q all.q submission command
-ValidateCommand
-
-# Figure out the command type
-if [ ${COMMAND_ARGS[0]} == "qsub -q all.q" ]; then
-	echo "Type qsub -q all.q"
-	COMMAND_TYPE="qsub -q all.q"
-else
-	echo "Type script"
-	COMMAND_TYPE="script"
-fi
 
 # Check the scratch space
 ValidateScratchSpace
@@ -162,41 +142,35 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
 	if [ $TASK_INDEX -lt $NUM_CONCURRENT_TASKS ]; then
 		echo "    Immediate"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -V "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
 	else
 		echo "    Waiting on $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS))"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) -V "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
 	fi
 	
-	# 2) Execute command.  The command can either be a straight qsub -q all.q, in which case
-	# it is modified in-situ to add the required holds and names, or a script.  If
-	# a script, it is expected that this contains one or more qsub -q all.qs.  The qsub -q all.q jobs 
-	# are submitted with names and hold_jids so that the first job to be executed
-	# holds waiting for $WAIT_JOB_ID to be completed, and that the last job(s) to be
-	# executed have a name of $EXEC_JOB_ID.
+	# 2) Execute command.  The command is a script, which calls one or more 
+	# qsub -q all.qs.  The qsub -q all.q jobs are submitted with names and 
+	# hold_jids so that the first job to be executed holds waiting for 
+	# $WAIT_JOB_ID to be completed, and that the last job(s) to be executed 
+	# have a name of $EXEC_JOB_ID.
 	echo "  Submitting compute job $JOB_NAME"_E_"$TASK_INDEX, waiting on $JOB_NAME"_F_"$TASK_INDEX"
 	
 	cd $THIS_SCRATCH_PATH
-	if [ $COMMAND_TYPE == "qsub -q all.q" ]; then
-		COMMAND_MOD=${COMMAND/qsub -q all.q /qsub -q all.q -hold_jid $JOB_NAME"_F_"$TASK_INDEX -N $JOB_NAME"_E_"$TASK_INDEX -cwd }
-		eval $COMMAND_MOD
-	elif [ $COMMAND_TYPE == "script" ]; then
-		export WAIT_JOB_ID="$JOB_NAME"_F_"$TASK_INDEX"
-		export EXEC_JOB_ID="$JOB_NAME"_E_"$TASK_INDEX"
-		eval $COMMAND $TASK_DIRECTORY
-	else
-		echo "Invalid command type $COMMAND_TYPE.  This is a bug, please report it." >&2
-		exit 1
-	fi
+	export WAIT_JOB_ID="$JOB_NAME"_F_"$TASK_INDEX"
+	export EXEC_JOB_ID="$JOB_NAME"_E_"$TASK_INDEX"
+	eval $COMMAND $TASK_DIRECTORY
 	
 	# 3) Put job.  It is expected that the output of the job is at 
 	# $THIS_SCRATCH_PATH/output and will be put to $DEST_CIFS_DIR/$TASK_DIRECTORY
-	echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX"
-	qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR" "$TASK_DIRECTORY"
+	# Also define a temporary file to be used by put_a_gag.sh to indicate a successful
+	# copy -- this will be checked by the cleanup job before executing the delete.
+	export PUT_SUCCESS_FILE=`mktemp`
+	echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX, success file $PUT_SUCCESS_FILE"
+	qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX -V "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR\\\\$TASK_DIRECTORY" $PUT_SUCCESS_FILE
 	
 	# 4) Clean up
-	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX"
-	qsub -q all.q -wd $SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH"
+	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX, success file $PUT_SUCCESS_FILE"
+	qsub -q all.q -wd $SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX -V 'if [ -f $PUT_SUCCESS_FILE ]; then rm -r "$THIS_SCRATCH_PATH"; rm $PUT_SUCCESS_FILE; fi'
 	
 	(( TASK_INDEX++ ))
 done
