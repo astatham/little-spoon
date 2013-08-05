@@ -17,11 +17,13 @@ fi
 # so expect a lot of collision errors, which can be ignored.  Requires that the 
 # paths use the DOS/CIFS delimiter "\", not the POSIX "/".
 PATH_HEAD=""
-PATH_TAIL="${2}"
-while [ $PATH_TAIL != ""]; do
-	PATH_HEAD=${PATH_HEAD}"\\"${PATH_TAIL%%\\.*}
-	PATH_TAIL=${PATH_TAIL#\\.*}
-	${SMBCLIENT} -D "${PATH_HEAD}" -c "mkdir ${PATH_TAIL}"
+PATH_TAIL="${2}""\\"
+while [[ $PATH_TAIL != "" ]]; do
+	PATH_NEXT=${PATH_TAIL%%\\*}
+	PATH_TAIL=${PATH_TAIL#*\\}
+	eval ${SMBCLIENT} -D "${PATH_HEAD}" -c "mkdir ${PATH_NEXT}"
+	PATH_HEAD=${PATH_HEAD}"\\"${PATH_NEXT}
+	sleep 1
 done
 
 # Verify that the target directory is available, else bail.

@@ -119,8 +119,8 @@ echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
 #   3) Put job, scratch --> CIFS.  This is held on the execute job.
 #   4) Clean up by rm -r scratch/*
 
-# Export variables for use by grab_a_gag.sh and put_a_gag.sh
-export SMBCLIENT="$SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME"
+# The smbclient command for grab_a_gag.sh and put_a_gag.sh
+SMBCLIENT="$SMBCLIENT_COMMAND -A $CREDS_FILE $SHARE_NAME"
 echo "SMBCLIENT=$SMBCLIENT"
 
 EXEC_DIR=$SCRATCH_PATH
@@ -142,10 +142,10 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
 	if [ $TASK_INDEX -lt $NUM_CONCURRENT_TASKS ]; then
 		echo "    Immediate"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -V "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -v SMBCLIENT="$SMBCLIENT" "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
 	else
 		echo "    Waiting on $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS))"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) -V "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) -v SMBCLIENT="$SMBCLIENT" "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
 	fi
 	
 	# 2) Execute command.  The command is a script, which calls one or more 
@@ -166,11 +166,11 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	# copy -- this will be checked by the cleanup job before executing the delete.
 	export PUT_SUCCESS_FILE=`mktemp`
 	echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX, success file $PUT_SUCCESS_FILE"
-	qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX -V "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR\\\\$TASK_DIRECTORY" $PUT_SUCCESS_FILE
+	qsub -q all.q -wd $THIS_SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX -v SMBCLIENT="$SMBCLIENT"  "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR\\\\$TASK_DIRECTORY" $PUT_SUCCESS_FILE
 	
 	# 4) Clean up
 	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX, success file $PUT_SUCCESS_FILE"
-	qsub -q all.q -wd $SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX -V 'if [ -f $PUT_SUCCESS_FILE ]; then rm -r "$THIS_SCRATCH_PATH"; rm $PUT_SUCCESS_FILE; fi'
+	qsub -q all.q -wd $SCRATCH_PATH -pe orte 1 -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX -v PUT_SUCCESS_FILE="$PUT_SUCCESS_FILE",THIS_SCRATCH_PATH="$THIS_SCRATCH_PATH"  'if [ -f $PUT_SUCCESS_FILE ]; then rm -r "$THIS_SCRATCH_PATH"; rm $PUT_SUCCESS_FILE; fi'
 	
 	(( TASK_INDEX++ ))
 done
