@@ -74,11 +74,11 @@ while getopts ":s:d:N:t:A:R:f:F:a:" OPTION; do
 done
 
 # Set share names to default if not specified
-if [[ -z SOURCE_SHARE_NAME ]]; then
+if [[ -z $SOURCE_SHARE_NAME ]]; then
 	SOURCE_SHARE_NAME=$DEFAULT_SHARE_NAME;
 fi
 
-if [[ -z DEST_SHARE_NAME ]]; then
+if [[ -z $DEST_SHARE_NAME ]]; then
 	DEST_SHARE_NAME=$DEFAULT_SHARE_NAME;
 fi
 
