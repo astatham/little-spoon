@@ -20,27 +20,31 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.4
+VERSION=0.5
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
 JOB_NAME="littlespoon_$$"
 DEFAULT_SHARE_NAME="//gagri.garvan.unsw.edu.au/GRIW"
-SCRATCH_PATH="/share/Temp/$USER/littlespoon_$$"
+SCRATCH_PATH="/share/ClusterScratch/$USER/littlespoon_$$"
 CREDS_FILE="~/.gagri.creds"
+VERBOSE=1
 
 # The smbclient command
 SMBCLIENT_COMMAND="smbclient"
 
 ValidateScratchSpace()
 {
-	echo "ValidateScratchSpace: TODO"
+	verbose && echo "ValidateScratchSpace: TODO"
 	# TODO: Free space and permission checks, etc.
 }
 
+function verbose () {
+    [[ $VERBOSE -eq 1 ]] && return 0 || return 1
+}
 
 # Parse the named arguments
-while getopts ":s:d:N:t:A:R:f:F:a:" OPTION; do
+while getopts ":s:d:N:t:A:R:f:F:a:q" OPTION; do
 	case $OPTION in
 		s)	SOURCE_SHARE_NAME=$OPTARG 
 			;;
@@ -63,6 +67,8 @@ while getopts ":s:d:N:t:A:R:f:F:a:" OPTION; do
 		F)	FILTER_REGEX=$OPTARG
 			;;
 		a)	COMMAND_ARGUMENTS="$COMMAND_ARGUMENTS $OPTARG"
+			;;
+		q)	VERBOSE=0
 			;;
 		\?)	echo "Unknown option: -$OPTARG" >&2
 			exit 1
@@ -90,7 +96,7 @@ if [ $# -lt $OPTIND_INC ] || [ $# -lt 4 ]; then
 fi
 
 #Start execution
-echo "Starting littlespoon version ""$VERSION"
+verbose && echo "Starting littlespoon version ""$VERSION"
 
 OPT_ARRAY=("$@")
 SRC_CIFS_DIR=${OPT_ARRAY[@]:$OPTIND-1:1}
@@ -100,7 +106,7 @@ COMMAND_ARGS=${OPT_ARRAY[@]:$OPTIND+2:${#OPT_ARRAY[@]}-$OPTIND+1}
 COMMAND="${COMMAND_ARGS[*]}"
 
 # Check the scratch space
-ValidateScratchSpace
+# ValidateScratchSpace
 
 # Work out list of directories we are copying from gagri
 if [[ -z "$CIFS_FILE_LIST" ]]; then
@@ -115,7 +121,7 @@ fi
 if [[ ! -z "$FILTER_REGEX" ]];
 then
 	tmp=( "${CIFS_DIR_LISTING[@]}" )
-	CIFS_DIR_LISTING=( $(for i in ${tmp[@]}; do echo "$i"; done | grep -E "$FILTER_REGEX") )
+	CIFS_DIR_LISTING=( $(for i in ${tmp[@]}; do verbose && echo "$i"; done | grep -E "$FILTER_REGEX") )
 fi
 
 # Check we have >=1 directories to littlespoon
@@ -125,7 +131,7 @@ if [ ${#CIFS_DIR_LISTING[@]} -eq 0 ]; then
 fi
 
 # We now have our final list of directories
-echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
+verbose && echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
 
 # Submit the tasks.  Tasks are structured as follows:
 #   1) Fetch job, CIFS --> scratch space.  This may be held on the put job of a previous task.
@@ -136,30 +142,30 @@ echo "Directory listing: ${CIFS_DIR_LISTING[@]}"
 # Export variables for use by grab_a_gag.sh and put_a_gag.sh
 SMBCLIENT_FETCH="$SMBCLIENT_COMMAND -A $CREDS_FILE $SOURCE_SHARE_NAME"
 SMBCLIENT_PUSH="$SMBCLIENT_COMMAND -A $CREDS_FILE $DEST_SHARE_NAME"
-echo "SMBCLIENT_FETCH=$SMBCLIENT_FETCH, SMBCLIENT_PUSH=$SMBCLIENT_PUSH"
+verbose && echo "SMBCLIENT_FETCH=$SMBCLIENT_FETCH, SMBCLIENT_PUSH=$SMBCLIENT_PUSH"
 
 EXEC_DIR=$SCRATCH_PATH
 
 TASK_INDEX=0
 for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 
-	echo "TASK_INDEX=$TASK_INDEX"
-	echo "TASK_DIRECTORY=$TASK_DIRECTORY"
+	verbose && echo "TASK_INDEX=$TASK_INDEX"
+	verbose && echo "TASK_DIRECTORY=$TASK_DIRECTORY"
 	# 1) Fetch job
 	# Prepare the scratch space
-	echo "  Preparing scratch"
+	verbose && echo "  Preparing scratch"
 	THIS_SCRATCH_PATH=$SCRATCH_PATH/$TASK_DIRECTORY
 	mkdir -p $THIS_SCRATCH_PATH
 	rm -rf $THIS_SCRATCH_PATH/* > /dev/null 2>&1
 	mkdir -p $THIS_SCRATCH_PATH/input $THIS_SCRATCH_PATH/output
 	# Submit the fetch jobs, using Aaron's script
-	echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
+	verbose && echo "  Submitting get jobs (ID $JOB_NAME"_F_"$TASK_INDEX)"
 	if [ $TASK_INDEX -lt $NUM_CONCURRENT_TASKS ]; then
-		echo "    Immediate"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_FETCH" -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		verbose && echo "    Immediate"
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_FETCH" -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input > /dev/null
 	else
-		echo "    Waiting on $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS))"
-		qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_FETCH" -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input
+		verbose && echo "    Waiting on $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS))"
+		qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_FETCH" -N $JOB_NAME"_F_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_C_"$((TASK_INDEX - NUM_CONCURRENT_TASKS)) "$LITTLESPOON"/grab_a_gag.sh "$SRC_CIFS_DIR/$TASK_DIRECTORY/*" "$THIS_SCRATCH_PATH"/input > /dev/null
 	fi
 	
 	# 2) Execute command.  The command is a script. 
@@ -167,23 +173,24 @@ for TASK_DIRECTORY in "${CIFS_DIR_LISTING[@]}"; do
 	# are submitted with names and hold_jids so that the first job to be executed
 	# holds waiting for $WAIT_JOB_ID to be completed, and that the last job(s) to be
 	# executed have a name of $EXEC_JOB_ID.
-	echo "  Submitting compute job $JOB_NAME"_E_"$TASK_INDEX, waiting on $JOB_NAME"_F_"$TASK_INDEX"
+	verbose && echo "  Submitting compute job $JOB_NAME"_E_"$TASK_INDEX, waiting on $JOB_NAME"_F_"$TASK_INDEX"
 	
 	cd $THIS_SCRATCH_PATH
 	export WAIT_JOB_ID="$JOB_NAME"_F_"$TASK_INDEX"
 	export EXEC_JOB_ID="$JOB_NAME"_E_"$TASK_INDEX"
-    COMMAND_TO_EXEC="$COMMAND $TASK_DIRECTORY $COMMAND_ARGUMENTS"
+        COMMAND_TO_EXEC="$COMMAND $TASK_DIRECTORY $COMMAND_ARGUMENTS > /dev/null"
 	eval $COMMAND_TO_EXEC
 	
 	# 3) Put job.  It is expected that the output of the job is at 
 	# $THIS_SCRATCH_PATH/output and will be put to $DEST_CIFS_DIR/$TASK_DIRECTORY
-	echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX"
-	qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_PUSH" -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR" "$TASK_DIRECTORY"
+	verbose && echo "  Submitting push job $JOB_NAME"_P_"$TASK_INDEX, waiting on $JOB_NAME"_E_"$TASK_INDEX"
+	qsub -q all.q -wd $THIS_SCRATCH_PATH -v SMBCLIENT="$SMBCLIENT_PUSH" -N $JOB_NAME"_P_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_E_"$TASK_INDEX "$LITTLESPOON"/put_a_gag.sh "$THIS_SCRATCH_PATH/output/" "$DEST_CIFS_DIR" "$TASK_DIRECTORY" > /dev/null
 	
 	# 4) Clean up
-	echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX"
-	qsub -q all.q -wd $SCRATCH_PATH -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH"
+	verbose && echo "  Submitting cleanup job $JOB_NAME"_C_"$TASK_INDEX, waiting on $JOB_NAME"_P_"$TASK_INDEX"
+	JOBID=`qsub -q all.q -wd $SCRATCH_PATH -N $JOB_NAME"_C_"$TASK_INDEX -j y -b y -shell n -hold_jid $JOB_NAME"_P_"$TASK_INDEX rm -r "$THIS_SCRATCH_PATH" | cut -d " " -f3`
 	
     TASK_INDEX=$[$TASK_INDEX +1]
 done
 
+verbose && echo "All jobs submitted" || echo $JOBID
