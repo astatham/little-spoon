@@ -20,7 +20,7 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.5
+VERSION=0.6
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
@@ -44,7 +44,7 @@ function verbose () {
 }
 
 # Parse the named arguments
-while getopts ":s:d:N:t:A:R:f:F:a:q" OPTION; do
+while getopts ":s:d:N:t:A:R:f:F:a:q1:" OPTION; do
 	case $OPTION in
 		s)	SOURCE_SHARE_NAME=$OPTARG 
 			;;
@@ -69,6 +69,8 @@ while getopts ":s:d:N:t:A:R:f:F:a:q" OPTION; do
 		a)	COMMAND_ARGUMENTS="$COMMAND_ARGUMENTS $OPTARG"
 			;;
 		q)	VERBOSE=0
+			;;
+		1)	CIFS_DIR_LISTING=$OPTARG
 			;;
 		\?)	echo "Unknown option: -$OPTARG" >&2
 			exit 1
@@ -109,9 +111,12 @@ COMMAND="${COMMAND_ARGS[*]}"
 # ValidateScratchSpace
 
 # Work out list of directories we are copying from gagri
+
 if [[ -z "$CIFS_FILE_LIST" ]]; then
-	# Get a directory listing on the target directory on gagri
-	CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SOURCE_SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+	if [[ -z "$CIFS_DIR_LISTING" ]]; then
+		# Get a directory listing on the target directory on gagri
+		CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SOURCE_SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+	fi
 else
 	# Get the listing from the supplied file
 	CIFS_DIR_LISTING=( $(sed -r 's/^\s*//; s/\s*$//; /^$/d' "$CIFS_FILE_LIST") )
