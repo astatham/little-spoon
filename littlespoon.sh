@@ -20,7 +20,7 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.6
+VERSION=0.7
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults

@@ -19,6 +19,10 @@ fi
 #    exit 1
 #fi
 CURDIR=$(pwd)
+
+#Copy logs into $1
+cp littlespoon*.o* littlespoon*.e* $1 2> /dev/null || :
+
 cd $1
 CMD="${SMBCLIENT} -c \"cd ${2}; mkdir ${3}; cd ${3}; prompt; recurse; mput *\""
 echo $CMD
