@@ -20,13 +20,13 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.7
+VERSION=0.8
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
 JOB_NAME="littlespoon_$$"
 DEFAULT_SHARE_NAME="//gagri.garvan.unsw.edu.au/GRIW"
-SCRATCH_PATH="/share/ClusterScratch/$USER/littlespoon_$$"
+SCRATCH_PATH="/share/Temp/$USER/littlespoon_$$"
 CREDS_FILE="~/.gagri.creds"
 VERBOSE=1
 
@@ -52,7 +52,7 @@ while getopts ":s:d:N:t:A:R:f:F:a:q1:" OPTION; do
 			;;
 		N)	JOB_NAME=$OPTARG 
 			;;
-		t)	SCRATCH_PATH=$OPTARG
+		t)	SCRATCH_PATH=$OPTARG"/$USER/littlespoon_$$"
 			;;
 		A)	CREDS_FILE=$OPTARG
 			;;
