@@ -20,7 +20,7 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.8
+VERSION=0.9
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
@@ -31,7 +31,7 @@ CREDS_FILE="~/.gagri.creds"
 VERBOSE=1
 
 # The smbclient command
-SMBCLIENT_COMMAND="smbclient"
+SMBCLIENT_COMMAND="smbclient --socket-options=\"TCP_NODELAY IPTOS_LOWDELAY SO_KEEPALIVE SO_RCVBUF=131072 SO_SNDBUF=131072\""
 
 ValidateScratchSpace()
 {
@@ -115,7 +115,8 @@ COMMAND="${COMMAND_ARGS[*]}"
 if [[ -z "$CIFS_FILE_LIST" ]]; then
 	if [[ -z "$CIFS_DIR_LISTING" ]]; then
 		# Get a directory listing on the target directory on gagri
-		CIFS_DIR_LISTING=( $($SMBCLIENT_COMMAND -A $CREDS_FILE $SOURCE_SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}') )
+		CIFS_CMD="$SMBCLIENT_COMMAND -A $CREDS_FILE $SOURCE_SHARE_NAME -D $SRC_CIFS_DIR -c dir 2>/dev/null"
+		CIFS_DIR_LISTING=( `eval $CIFS_CMD | awk '{if ($2 == "D" && $1 !~ /\.+/) { print $1 }}'` )
 	fi
 else
 	# Get the listing from the supplied file

@@ -3,7 +3,7 @@
 
 #Default server and credentials, unless already set
 if [[ -z "$SMBCLIENT" ]]; then
-	SMBCLIENT="smbclient //Gagri/GRIW -A ~/.smbclient"
+	SMBCLIENT="smbclient --socket-options=\"TCP_NODELAY IPTOS_LOWDELAY SO_KEEPALIVE SO_RCVBUF=131072 SO_SNDBUF=131072\" //Gagri/GRIW -A ~/.smbclient"
 fi
 
 if [ $# -ne 3 ]
