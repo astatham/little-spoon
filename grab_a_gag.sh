@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 #grab_a_gag.sh <file/directory name> [target directory ./ default]
 
 #Default server and credentials, unless already set
@@ -7,7 +7,7 @@ if [[ -z "$SMBCLIENT" ]]; then
 fi
 
 case "$#" in
-1)  DESTDIR="./";;
+1)  DESTDIR="$PWD";;
 2)  DESTDIR="$2";;
 *)  echo "Usage:  $(basename $0) {Remote file/directory} [Local target directory]"
     exit 1;;
@@ -21,13 +21,34 @@ then
 fi
 
 CURDIR=$(pwd)
-#Go to target directory and download the target
-cd "$DESTDIR"
 TARGET="${1%/}" # remove trailing slash in case a directory is the target
 fn="${TARGET##*/}" # filename
 dn="${TARGET%/*}"  # dirname
 
 CMD="${SMBCLIENT} -c \"prompt; recurse; cd ${dn}; mget ${fn}\""
 echo $CMD
-eval $CMD
+
+# Download to temporary directory
+DOWNLOAD_DIR=/tmp/littlespoon_"$$"
+mkdir -p "$DOWNLOAD_DIR"
+cd "$DOWNLOAD_DIR"
+
+ATTEMPTS=1
+eval $CMD 2>&1 | tee smbclient.log
+! grep -qE "NT_STATUS_IO_TIMEOUT|NT_STATUS_PIPE_BROKEN" smbclient.log
+while [ $? -ne 0 ]
+do
+    echo "Transfer disrupted, retrying in 10 seconds..."
+    sleep 10
+	((ATTEMPTS++))
+	rm -rf "$dn"
+	eval $CMD 2>&1 | tee smbclient.log
+	! grep -qE "NT_STATUS_IO_TIMEOUT|NT_STATUS_PIPE_BROKEN" smbclient.log
+done
+rm -f smbclient.log
+mv "$fn" $DESTDIR
+
+echo "Transfer completed in" $ATTEMPTS "attempt(s)"
+
 cd "$CURDIR"
+rm -rf "$DOWNLOAD_DIR"
