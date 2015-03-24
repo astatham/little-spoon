@@ -46,7 +46,7 @@ do
 	! grep -qE "NT_STATUS_IO_TIMEOUT|NT_STATUS_PIPE_BROKEN" smbclient.log
 done
 rm -f smbclient.log
-mv "$fn" $DESTDIR
+mv $fn $DESTDIR
 
 echo "Transfer completed in" $ATTEMPTS "attempt(s)"
 
