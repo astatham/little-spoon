@@ -44,19 +44,17 @@ function verbose () {
 }
 
 # Parse the named arguments
-while getopts ":s:d:N:t:A:R:f:F:a:q1:" OPTION; do
+while getopts ":s:d:N:t:A:R:f:F:a:qh1:" OPTION; do
 	case $OPTION in
 		s)	SOURCE_SHARE_NAME=$OPTARG 
 			;;
 		d)	DEST_SHARE_NAME=$OPTARG
 			;;
-		N)	JOB_NAME=$OPTARG 
+		N)	JOB_NAME="$OPTARG"_$$
 			;;
 		t)	SCRATCH_PATH=$OPTARG"/$USER/littlespoon_$$"
 			;;
 		A)	CREDS_FILE=$OPTARG
-			;;
-		R)	RESULTS_SUBDIR=$OPTARG
 			;;
 		f)	CIFS_FILE_LIST=$OPTARG
 			if [ ! -e "$CIFS_FILE_LIST" ]; then
@@ -69,6 +67,27 @@ while getopts ":s:d:N:t:A:R:f:F:a:q1:" OPTION; do
 		a)	COMMAND_ARGUMENTS="$COMMAND_ARGUMENTS $OPTARG"
 			;;
 		q)	VERBOSE=0
+			;;
+		h)	echo "Usage: littlespoon.sh [-h] [-q] [-s <source CIFS share>] [-d <destination CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <credentialss file>] [-a <argument to command>] [-1 <single directory] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
+			echo ""
+			echo "positional arguments:"
+			echo "  <source CIFS directory>      Directory on source CIFS share input data directories are located"
+			echo "  <dest CIFS directory>        Directory on destination CIFS share output data is to be placed"
+			echo "  <maximum concurrent tasks>   Maximum number of 'command' instances to run simulteneously"
+			echo "  <command>                    The script to be executed"
+			echo ""
+			echo ""
+			echo "optional arguments:"
+			echo "  -h                           Show this help message and exit"
+			echo "  -q                           Quiet mode - the only output will be the SGE jobid of the final queued job"
+			echo "  -s <source CIFS share>       Source CIFS share to copy data from; defaults to '//gagri.garvan.unsw.edu.au/GRIW'"
+			echo "  -d <destination CIFS share>  Destination CIFS share to copy data to; defaults to '//gagri.garvan.unsw.edu.au/GRIW'"
+			echo "  -N <Job name prefix>         Prefix for jobs submitted to SGE; defaults to 'littlespoon_<generated number>'"
+			echo "  -t <temp location            Location on the cluster where data will be processed; defaults to '/share/Temp/<username>/littlespoon_<generated number>'"
+			echo "  -A <credentialss file>       Location of file containing CIFS login credentials; defaults to '~/.gagri.creds'"
+			echo "  -a <argument to command>     Additional argument to be passed to <command>; may be specified multiple times"
+			echo "  -1 <single directory>        Only process a specified single directory of data from the <source CIFS directory>"
+			exit 0
 			;;
 		1)	CIFS_DIR_LISTING=$OPTARG
 			;;
@@ -93,7 +112,7 @@ fi
 # Parse positional arguments
 OPTIND_INC=$((3 + OPTIND))
 if [ $# -lt $OPTIND_INC ] || [ $# -lt 4 ]; then
-	echo "Usage: littlespoon.sh [-s <source CIFS share>] [-d <destination CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <creds file>] [-a <argument to command (may be specified multiple times)>]<source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
+	echo "Usage: littlespoon.sh [-h] [-q] [-s <source CIFS share>] [-d <destination CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <credentialss file>] [-a <argument to command>] [-1 <single directory] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
 	exit 1
 fi
 
