@@ -20,7 +20,7 @@
 #	<dest CIFS directory> <maximum concurrent tasks> <command>
 #
 
-VERSION=0.10
+VERSION=0.11
 LITTLESPOON=`readlink -f "${0%/*}"`
 
 # Argument defaults
@@ -68,7 +68,8 @@ while getopts ":s:d:N:t:A:R:f:F:a:qh1:" OPTION; do
 			;;
 		q)	VERBOSE=0
 			;;
-		h)	echo "Usage: littlespoon.sh [-h] [-q] [-s <source CIFS share>] [-d <destination CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <credentialss file>] [-a <argument to command>] [-1 <single directory] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
+		h)	echo "littlespoon version $VERSION"
+			echo "Usage: littlespoon.sh [-h] [-q] [-s <source CIFS share>] [-d <destination CIFS share>] [-N <Job name prefix>] [-t <temp location>] [-A <credentialss file>] [-a <argument to command>] [-1 <single directory] <source CIFS directory> <dest CIFS directory> <maximum concurrent tasks> <command>"
 			echo ""
 			echo "positional arguments:"
 			echo "  <source CIFS directory>      Directory on source CIFS share input data directories are located"
@@ -83,7 +84,7 @@ while getopts ":s:d:N:t:A:R:f:F:a:qh1:" OPTION; do
 			echo "  -s <source CIFS share>       Source CIFS share to copy data from; defaults to '//gagri.garvan.unsw.edu.au/GRIW'"
 			echo "  -d <destination CIFS share>  Destination CIFS share to copy data to; defaults to '//gagri.garvan.unsw.edu.au/GRIW'"
 			echo "  -N <Job name prefix>         Prefix for jobs submitted to SGE; defaults to 'littlespoon_<generated number>'"
-			echo "  -t <temp location            Location on the cluster where data will be processed; defaults to '/share/Temp/<username>/littlespoon_<generated number>'"
+			echo "  -t <temp location>           Location on the cluster where data will be processed; defaults to '/share/Temp/<username>/littlespoon_<generated number>'"
 			echo "  -A <credentialss file>       Location of file containing CIFS login credentials; defaults to '~/.gagri.creds'"
 			echo "  -a <argument to command>     Additional argument to be passed to <command>; may be specified multiple times"
 			echo "  -1 <single directory>        Only process a specified single directory of data from the <source CIFS directory>"
